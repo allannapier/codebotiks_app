@@ -20,9 +20,9 @@ def get_documentation_files(doc_dir):
         
         for filename in filenames:
             if filename.endswith('.md'):
-                directory = rel_path if rel_path != '.' else ''
+                directory = rel_path if rel_path != '.' else '/'
                 files.append({
-                    'name': os.path.splitext(filename)[0],
+                    'name': filename,
                     'directory': directory,
                     'path': os.path.join(rel_path, filename)
                 })
@@ -40,6 +40,8 @@ def read_markdown_file(doc_dir, file_path):
                 extensions=['fenced_code', 'codehilite', 'tables', 'toc']
             )
             return html
+    except FileNotFoundError:
+        return None
     except Exception as e:
         return f"<p>Error reading file: {str(e)}</p>"
 
@@ -58,6 +60,8 @@ def get_docs():
 def get_doc(file_path):
     """Get content of a specific documentation file."""
     html_content = read_markdown_file(doc_base_path, file_path)
+    if html_content is None:
+        return jsonify({'error': 'File not found'}), 404
     return jsonify({'content': html_content})
 
 @app.route('/static/<path:path>')
