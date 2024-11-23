@@ -5,6 +5,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import repo_scanner
+import git
 
 def test_extract_repo_info():
     """Test repository info extraction from URLs"""
