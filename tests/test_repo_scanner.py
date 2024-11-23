@@ -2,10 +2,12 @@
 
 import os
 import pytest
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import repo_scanner
 import git
+import subprocess
 
 def test_extract_repo_info():
     """Test repository info extraction from URLs"""
@@ -47,7 +49,8 @@ def test_remove_directory(mock_rmtree, mock_subprocess_run):
         mock_subprocess_run.return_value = Mock(returncode=0)
         assert repo_scanner.remove_directory('test_dir') is True
         
-        mock_subprocess_run.side_effect = Exception('Error')
+        # Test error handling
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(1, 'cmd')
         assert repo_scanner.remove_directory('test_dir') is False
     
     # Test Unix removal

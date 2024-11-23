@@ -1,13 +1,13 @@
 """Repository documentation generator using Google's Gemini AI."""
 
 import os
+import subprocess
+import shutil
+import platform
 from pathlib import Path
 from typing import Tuple, Optional, Union, List
 import git
 import argparse
-import shutil
-import platform
-import subprocess
 import google.generativeai as genai
 from dotenv import load_dotenv
 from github import Github
