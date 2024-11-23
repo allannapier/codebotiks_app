@@ -1,10 +1,13 @@
+"""Repository documentation generator using Google's Gemini AI."""
+
 import os
+from pathlib import Path
+from typing import Tuple, Optional, Union, List
 import git
 import argparse
 import shutil
 import platform
 import subprocess
-from pathlib import Path
 import google.generativeai as genai
 from dotenv import load_dotenv
 from github import Github
@@ -24,151 +27,199 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
-def extract_repo_info(repo_url):
+def extract_repo_info(repo_url: str) -> Tuple[Optional[str], Optional[str]]:
+    """Extract owner and repository name from GitHub URL.
+    
+    Args:
+        repo_url: GitHub repository URL.
+        
+    Returns:
+        Tuple containing owner and repository name, or (None, None) if invalid.
     """
-    Extract owner and repo name from GitHub URL
-    """
-    path = urlparse(repo_url).path
-    parts = path.strip('/').split('/')
-    if len(parts) >= 2:
-        return parts[0], parts[1]
+    try:
+        parts = repo_url.strip('/').split('/')
+        if len(parts) >= 5 and parts[2] == 'github.com':
+            owner = parts[3]
+            repo = parts[4]
+            # Remove .git extension if present
+            if repo.endswith('.git'):
+                repo = repo[:-4]
+            return owner, repo
+    except:
+        pass
     return None, None
 
-def create_pull_request(repo_path, repo_url, branch_name=None):
+def create_pull_request(repo_path: str, repo_url: str, branch_name: Optional[str] = None) -> bool:
+    """Create a pull request with the documentation changes.
+    
+    Args:
+        repo_path: Path to local repository.
+        repo_url: GitHub repository URL.
+        branch_name: Optional branch name for PR (default: docs/auto-generated-docs).
+        
+    Returns:
+        True if PR was created successfully, False otherwise.
     """
-    Create a pull request with the documentation changes
-    """
-    if not GITHUB_TOKEN:
-        print("GITHUB_TOKEN not found in environment variables. Skipping pull request creation.")
+    token = os.getenv('GITHUB_TOKEN')
+    if not token:
+        print("GitHub token not found. Please set GITHUB_TOKEN environment variable.")
         return False
 
     try:
-        # Initialize repository
-        repo = git.Repo(repo_path)
+        # Initialize GitHub client
+        g = Github(token)
         
-        # Create a unique branch name with timestamp
-        if branch_name is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            branch_name = f"docs/auto-generated_{timestamp}"
+        # Extract owner and repo from URL
+        owner, repo_name = extract_repo_info(repo_url)
+        if not owner or not repo_name:
+            print("Invalid repository URL")
+            return False
         
-        # Create and checkout new branch
-        current = repo.create_head(branch_name)
-        current.checkout()
-
+        # Get repository
+        repo = g.get_repo(f"{owner}/{repo_name}")
+        
+        # Create branch
+        if not branch_name:
+            branch_name = 'docs/auto-generated-docs'
+        
+        # Create and push branch
+        git_repo = git.Repo(repo_path)
+        branch = git_repo.create_head(branch_name)
+        branch.checkout()
+        
         # Stage all new files
-        repo.git.add(all=True)
+        git_repo.git.add(all=True)
         
         # Commit changes
         commit_message = "Add auto-generated documentation"
-        repo.index.commit(commit_message)
+        git_repo.index.commit(commit_message)
         
         # Push changes
-        repo.git.push('--set-upstream', 'origin', branch_name)
+        git_repo.git.push('--set-upstream', 'origin', branch_name)
 
-        # Create pull request using GitHub API
-        g = Github(GITHUB_TOKEN)
-        owner, repo_name = extract_repo_info(repo_url)
-        if not owner or not repo_name:
-            print("Could not extract owner and repo name from URL")
-            return False
-
-        github_repo = g.get_repo(f"{owner}/{repo_name}")
-        pr = github_repo.create_pull(
-            title="Add Auto-generated Documentation",
-            body="This PR adds automatically generated documentation for Python files in the repository.",
+        # Create pull request
+        pr = repo.create_pull(
+            title="Add Auto-Generated Documentation",
+            body="This PR adds automatically generated documentation for Python files.",
             head=branch_name,
-            base="main"  # or 'master' depending on the default branch
+            base=repo.default_branch
         )
+        
         print(f"Created pull request: {pr.html_url}")
         return True
-
+        
     except Exception as e:
-        print(f"Error creating pull request: {e}")
+        print(f"Error creating pull request: {str(e)}")
         return False
 
-def remove_directory(path):
-    """
-    Remove a directory using the appropriate method for the current OS
+def remove_directory(path: Union[str, Path]) -> bool:
+    """Remove a directory using the appropriate method for the current OS.
+    
+    Args:
+        path: Directory path to remove.
+        
+    Returns:
+        True if directory was removed successfully, False otherwise.
     """
     if platform.system() == 'Windows':
         try:
-            subprocess.run(['cmd', '/c', 'rmdir', '/s', '/q', path], check=True)
+            subprocess.run(['cmd', '/c', 'rmdir', '/s', '/q', str(path)], check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error removing directory using Windows command: {e}")
             return False
     else:
         try:
-            shutil.rmtree(path)
+            shutil.rmtree(str(path))
         except Exception as e:
             print(f"Error removing directory: {e}")
             return False
     return True
 
-def analyze_python_file(file_path):
-    """
-    Analyze a Python file using Google's Gemini API
+def analyze_python_file(file_path: Union[str, Path]) -> str:
+    """Analyze a Python file and generate documentation using Google's Gemini AI.
+    
+    Args:
+        file_path: Path to Python file.
+        
+    Returns:
+        Generated documentation as markdown text.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-        
-        prompt = f"""Analyze this Python code and provide a detailed documentation in markdown format that includes:
-        # Overview
-        - Brief description of the code's purpose
-        
-        # Key Components
-        ## Functions
-        - List and describe main functions and their purposes
-        
-        ## Dependencies
-        - List key dependencies and their roles
-        
-        ## Variables
-        - Document important variables and their roles
-        
-        ## Design Patterns & Architecture
-        - Notable patterns or design choices
-        - Code organization insights
-        
-        Here's the code:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Generate documentation using Gemini
+        prompt = f"""
+        Analyze this Python code and generate detailed markdown documentation:
+
         {content}
+
+        Include:
+        1. Overview of functionality
+        2. Key components and their purpose
+        3. Usage examples if applicable
+        4. Dependencies and requirements
+        5. Notable design decisions
         """
-        
+
         response = model.generate_content(prompt)
         return response.text
+
     except Exception as e:
         return f"Error analyzing file: {str(e)}"
 
-def create_documentation_file(python_file_path, repo_path, analysis):
+def create_documentation_file(python_file_path: Union[str, Path], repo_path: Union[str, Path], analysis: str) -> bool:
+    """Create a documentation markdown file for the analyzed Python file.
+    
+    Args:
+        python_file_path: Path to Python file.
+        repo_path: Path to repository root.
+        analysis: Generated documentation content.
+        
+    Returns:
+        True if documentation was created successfully, False otherwise.
     """
-    Create a documentation markdown file for the analyzed Python file,
-    maintaining the same directory structure under the documentation folder
-    """
-    # Get the relative path of the Python file from the repo root
-    relative_path = os.path.relpath(python_file_path, repo_path)
-    
-    # Create the documentation path with the same structure
-    doc_path = os.path.join(repo_path, 'documentation', os.path.dirname(relative_path))
-    doc_file_name = os.path.basename(relative_path).replace('.py', '_docs.md')
-    doc_file_path = os.path.join(doc_path, doc_file_name)
-    
-    # Create the directory structure if it doesn't exist
-    os.makedirs(doc_path, exist_ok=True)
-    
     try:
-        with open(doc_file_path, 'w', encoding='utf-8') as file:
-            file.write(f"# Documentation for `{os.path.basename(python_file_path)}`\n\n")
-            file.write("---\n\n")
-            file.write(analysis)
-            file.write("\n\n---\n*Documentation generated automatically using Google's Gemini AI*")
-        print(f"Created documentation: {os.path.relpath(doc_file_path, repo_path)}")
+        # Get the relative path of the Python file from the repo root
+        relative_path = os.path.relpath(str(python_file_path), str(repo_path))
+        
+        # Create the documentation path with the same structure
+        doc_path = os.path.join(str(repo_path), 'documentation', os.path.dirname(relative_path))
+        doc_file_name = os.path.basename(relative_path).replace('.py', '_docs.md')
+        doc_file_path = os.path.join(doc_path, doc_file_name)
+        
+        # Create the directory structure if it doesn't exist
+        try:
+            os.makedirs(doc_path, exist_ok=True)
+        except Exception as e:
+            print(f"Error creating documentation directory: {str(e)}")
+            return False
+        
+        try:
+            with open(doc_file_path, 'w', encoding='utf-8') as file:
+                file.write(f"# Documentation for `{os.path.basename(python_file_path)}`\n\n")
+                file.write("---\n\n")
+                file.write(analysis)
+                file.write("\n\n---\n*Documentation generated automatically using Google's Gemini AI*")
+            print(f"Created documentation: {os.path.relpath(doc_file_path, str(repo_path))}")
+            return True
+        except Exception as e:
+            print(f"Error writing documentation file: {str(e)}")
+            return False
+            
     except Exception as e:
         print(f"Error creating documentation file: {str(e)}")
+        return False
 
-def clone_repository(repo_url, target_dir):
-    """
-    Clone a repository from the given URL to the target directory.
-    If the directory exists, it will be removed first.
+def clone_repository(repo_url: str, target_dir: Union[str, Path]) -> bool:
+    """Clone a repository from the given URL to the target directory.
+    
+    Args:
+        repo_url: GitHub repository URL.
+        target_dir: Directory to clone into.
+        
+    Returns:
+        True if repository was cloned successfully, False otherwise.
     """
     try:
         # Check if directory exists and remove it if it does
@@ -178,7 +229,7 @@ def clone_repository(repo_url, target_dir):
                 return False
         
         # Clone the repository
-        git.Repo.clone_from(repo_url, target_dir)
+        git.Repo.clone_from(repo_url, str(target_dir))
         print(f"Successfully cloned repository to {target_dir}")
         return True
     except git.GitCommandError as e:
@@ -188,9 +239,11 @@ def clone_repository(repo_url, target_dir):
         print(f"Error: {str(e)}")
         return False
 
-def scan_repository(repo_path):
-    """
-    Scan through all files in the repository and analyze Python files
+def scan_repository(repo_path: Union[str, Path]) -> None:
+    """Scan through all files in the repository and analyze Python files.
+    
+    Args:
+        repo_path: Path to repository root.
     """
     repo_path = Path(repo_path)
     if not repo_path.exists():
@@ -223,11 +276,14 @@ def scan_repository(repo_path):
                 analysis = analyze_python_file(file_path)
                 create_documentation_file(file_path, repo_path, analysis)
 
-def main():
+def main() -> None:
+    """Main entry point for the repository documentation generator."""
     parser = argparse.ArgumentParser(description='Clone and scan a git repository')
     parser.add_argument('repo_url', help='URL of the repository to clone')
     parser.add_argument('target_dir', help='Directory to clone the repository into')
     parser.add_argument('--create-pr', action='store_true', help='Create a pull request with the documentation changes')
+    parser.add_argument('--serve', action='store_true', help='Start the documentation web server after generation')
+    parser.add_argument('--port', type=int, default=5000, help='Port for the documentation server (default: 5000)')
     
     args = parser.parse_args()
     
@@ -238,6 +294,11 @@ def main():
         if args.create_pr:
             print("\nCreating pull request...")
             create_pull_request(args.target_dir, args.repo_url)
+        
+        if args.serve:
+            print("\nStarting documentation server...")
+            from doc_server import start_server
+            start_server(args.port)
 
 if __name__ == "__main__":
     main()

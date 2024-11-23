@@ -2,6 +2,17 @@
 
 A Python tool that automatically generates documentation for Python files in a GitHub repository using Google's Gemini AI. The tool maintains the repository's directory structure and can optionally create a pull request with the generated documentation.
 
+⚠️ **IMPORTANT SECURITY AND PRIVACY WARNING** ⚠️
+
+This tool uses Google's Gemini AI to analyze code and generate documentation. By using this tool:
+- All code being analyzed will be sent to Google's servers
+- The code will be processed by Google's AI models
+- The code may be used to improve Google's services
+- You should **NOT** use this tool on any repository unless you have explicit permission to share its code with third-party services
+- You should **NOT** use this tool on private, proprietary, or sensitive code without proper authorization
+
+By using this tool, you accept responsibility for ensuring you have the necessary rights and permissions to share the code with Google's services.
+
 ## Features
 
 - Clones GitHub repositories
@@ -59,19 +70,25 @@ GITHUB_TOKEN=your_github_token_here
 2. Create a new API key
 3. Copy the key to your `.env` file
 
-### GitHub Personal Access Token (Optional - needed for PR creation)
+### GitHub Personal Access Token
 1. Go to GitHub.com
 2. Click your profile picture → Settings
 3. Scroll down to Developer settings → Personal access tokens → Tokens (classic)
 4. Generate new token (classic)
 5. Select the following scopes:
-   - repo (Full control of private repositories)
-     - repo:status
-     - repo_deployment
-     - public_repo
-     - repo:invite
-     - security_events
+   - `repo` (Full control of repositories)
+     - Required for both public and private repositories
+     - Includes access to code, commit statuses, and pull requests
+     - Needed for creating documentation branches and pull requests
 6. Copy the generated token to your `.env` file
+
+### Private Repository Access
+
+This tool supports both public and private repositories:
+- Ensure your GitHub token has the `repo` scope (as described above)
+- The token must belong to a user with access to the private repository
+- All security and privacy warnings still apply - code from private repositories will still be sent to Google's services
+- Exercise extra caution with private repositories to ensure you have proper authorization to share the code
 
 ## Usage
 
@@ -85,10 +102,32 @@ Create documentation and submit a pull request:
 python repo_scanner.py <repository-url> <target-directory> --create-pr
 ```
 
+Generate documentation and start the web viewer:
+```bash
+python repo_scanner.py <repository-url> <target-directory> --serve
+```
+
+You can also specify a custom port for the web server:
+```bash
+python repo_scanner.py <repository-url> <target-directory> --serve --port 8080
+```
+
 Example:
 ```bash
-python repo_scanner.py https://github.com/username/repo ./cloned_repo
+python repo_scanner.py https://github.com/username/repo ./cloned_repo --serve
 ```
+
+After starting the web server, open your browser and navigate to `http://localhost:5000` (or your specified port) to view the documentation.
+
+## Documentation Web Viewer
+
+The documentation web viewer provides a clean, modern interface for browsing your generated documentation:
+
+- File browser sidebar with directory structure
+- Markdown rendering with syntax highlighting
+- Mobile-responsive design
+- Code block highlighting
+- Table of contents support
 
 ## Output Structure
 
