@@ -21,11 +21,12 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables")
-
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+# Only configure Gemini if API key is available
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+else:
+    model = None
 
 def extract_repo_info(repo_url: str) -> Tuple[Optional[str], Optional[str]]:
     """Extract owner and repository name from GitHub URL.
@@ -161,7 +162,10 @@ def analyze_python_file(file_path: Union[str, Path]) -> str:
         4. Dependencies and requirements
         5. Notable design decisions
         """
-
+        
+        if model is None:
+            return "Error: Gemini API key not available"
+        
         response = model.generate_content(prompt)
         return response.text
 
